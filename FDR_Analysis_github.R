@@ -169,6 +169,164 @@ dev.off()
 
 
 
+############ ############ ############ ############ ############ ############ ############ ############ ############ 
+
+### The code below is to produce the results related to Yan & Zhang (2017) 18,000 anomalies.  Please contact Yan & Zhang for their data
+
+############    Yan&Zheng 2017 18000 anomalies
+
+## anomaly.vw:  long-short portfolio under value weighting, the associated p_values and t_values Yan&Zheng 2017
+## anomaly.ew:  strategy alphas under equal weighting and the associated p_values and t_values 
+
+
+#################### Figure 2 of the paper: t-stat for anomaly returns
+pdf("an_tstat_ewvw.pdf", width = 10, height = 6 )
+par(mfrow=c(1,2))  #, mar=c(10, 4.5, 0, 1))
+## Equal-weight
+hist(anomaly.ew$tstat, n=20, xlab = "Equal weighting", main="", xaxt="n")
+axis(side=1, at=c(-8, -5, -2, 0, 2,5,8))
+## value-weight
+hist(anomaly.vw$tstat, n=20, xlab = "Value weighting", main="", xaxt="n")
+axis(side=1, at=c(-5, -2, 0, 2,5))
+dev.off()
+
+
+############################################################# FDR part:  equal weighted
+anomaly = anomaly.ew
+pv = anomaly$pv
+ZSCORE <- qnorm(1 - pv)
+if(any(is.infinite(ZSCORE))) { 
+  ZSCORE[ZSCORE == Inf] = max(ZSCORE[!is.infinite(ZSCORE)])*1.01
+  ZSCORE[ZSCORE == -Inf] = min(ZSCORE[!is.infinite(ZSCORE)])*1.01
+}
+
+
+### Table 5: Panel A
+#### Storey (2002) methods to estimate pi0 as initial value to EM algorithm
+ini = pi0est(pv, lambda=0.8)$pi0 
+ewout0 = normalmixEM(ZSCORE, lambda=c(ini, 1-ini),  mu=c(0,2), sigma=c(1,2),  mean.constr=c(0, NA), sd.constr=c(1, NA), epsilon = 1e-08, maxit=2000, maxrestarts=40)
+summary(ewout0)
+ewout1 = normalmixEM(ZSCORE, lambda=c(ini, 1-ini),  mu=c(0,2), sigma=c(1,2), epsilon = 1e-08, maxit=2000, maxrestarts=40,  arbvar=T)
+summary(ewout1)
+
+## BIC:  k*ln(n) - 2ln(L): select one with minimum BIC value
+BIC0 =  3*log(length(ZSCORE))-2*ewout0$loglik   
+BIC1 =  5*log(length(ZSCORE))-2*ewout1$loglik
+c(BIC0, BIC1)
+diff(c(BIC0, BIC1))
+
+## AIC:  k*2 - 2ln(L) : select one with minimum AIC value
+AIC0 =  3*2-2*ewout0$loglik   
+AIC1 =  5*2-2*ewout1$loglik
+c(AIC0, AIC1)
+
+
+### Table 5: Panel B
+out = ewout1
+anomaly = anomaly.ew
+
+tab <- matrix(NA, nrow = 5, ncol = 6)
+tab[,1] <- c(0.01, 0.05, 0.1, 0.15, 0.2)
+for(i in 1:5)
+{
+  lamb <- targetFDR(FDR=tab[i,1], mu0=out$mu[1], s0=out$sigma[1],  mu1=out$mu[2], s1=out$sigma[2], pi0=out$lambda[1])   # lambda which is associated with a given FDR level
+  k = BE(lambda=lamb, w=1/2, mu0=out$mu[1], s0=out$sigma[1],  mu1=out$mu[2], s1=out$sigma[2], pi0=out$lambda[1], lossonly=F)
+  tab[i, 2:6] <- c(k$FNR, k$thurdle, sum(anomaly$tstat >= k$thurdle)/nrow(anomaly), sum(anomaly$tstat <= -k$thurdle)/nrow(anomaly),  
+                   sum(abs(anomaly$tstat) >= k$thurdle)/nrow(anomaly))
+}
+tab
+
+### Table 5: Panel C
+kappaseq <- c(0.05, seq(0.1,0.6,0.1))  ## different rejection rule
+tx <- out$posterior[,1]
+k = data.frame(FDRTable(tx,kappaseq))
+k[, c(1,2,3,4,5,8)]
+
+
+
+############################################################# FDR part:  value weighted
+anomaly = anomaly.vw
+pv = anomaly$pv
+ZSCORE <- qnorm(1 - pv)
+
+### Table 6: Panel A
+ini = pi0est(pv, lambda=0.8)$pi0  
+vwout0 = normalmixEM(ZSCORE, lambda=c(ini, 1-ini),  mu=c(0,1), sigma=c(1,1),  mean.constr=c(0, NA), sd.constr=c(1, NA), epsilon = 1e-06, maxit=2000, maxrestarts=40)
+summary(vwout0)
+vwout1 = normalmixEM(ZSCORE, lambda=c(ini, 1-ini),  mu=c(0,1), sigma=c(1,1), epsilon = 1e-06, maxit=10000, maxrestarts=40,  arbvar=T) # for vw ret
+summary(vwout1)
+
+## BIC:  k*ln(n) - 2ln(L): select one with minimum BIC value
+BIC0 =  3*log(length(ZSCORE))-2*vwout0$loglik   
+BIC1 =  5*log(length(ZSCORE))-2*vwout1$loglik
+c(BIC0, BIC1)
+diff(c(BIC0, BIC1))
+
+## AIC:  k*2 - 2ln(L) : select one with minimum AIC value
+AIC0 =  3*2-2*vwout0$loglik   
+AIC1 =  5*2-2*vwout1$loglik
+c(AIC0, AIC1)
+
+### Table 6: Panel B
+out = vwout0
+anomaly = anomaly.vw
+
+tab <- matrix(NA, nrow = 5, ncol = 6)
+tab[,1] <- c(0.01, 0.05, 0.1, 0.15, 0.2)
+for(i in 1:5)
+{
+  lamb <- targetFDR(FDR=tab[i,1], mu0=out$mu[1], s0=out$sigma[1],  mu1=out$mu[2], s1=out$sigma[2], pi0=out$lambda[1])   # lambda which is associated with a given FDR level
+  k = BE(lambda=lamb, w=1/2, mu0=out$mu[1], s0=out$sigma[1],  mu1=out$mu[2], s1=out$sigma[2], pi0=out$lambda[1], lossonly=F)
+  tab[i, 2:6] <- c(k$FNR, k$thurdle, sum(anomaly$tstat >= k$thurdle)/nrow(anomaly), sum(anomaly$tstat <= -k$thurdle)/nrow(anomaly),  
+                   sum(abs(anomaly$tstat) >= k$thurdle)/nrow(anomaly))
+}
+tab
+
+### Table 6: Panel C
+kappaseq <- c(0.05, seq(0.1,0.6,0.1))  ## different rejection rule
+tx <- out$posterior[,1]
+k = data.frame(FDRTable(tx,kappaseq))
+k[, c(1,2,3,4,5,8)]
+
+
+##### Figure 3
+
+library("ggplot2")
+library("dplyr")
+library("ggpubr")  # to place multiple ggplots on one page
+
+pdf("AN_two_componentmix_both.pdf", width = 10, height = 6 )
+
+out = vwout0
+m1 <- data.frame(x = out$x) %>%
+  ggplot() +
+  geom_histogram(aes(x, ..density..), bins =20,  colour = "black", 
+                 fill = "white") +
+  stat_function(geom = "line",  fun = plot_mix_comps,
+                args = list(out$mu[1], out$sigma[1], pi = out$lambda[1]),
+                colour = "red", lwd = 1.1) +
+  stat_function(geom = "line",  fun = plot_mix_comps,
+                args = list(out$mu[2], out$sigma[2], pi = out$lambda[2]),
+                colour = "blue", lwd = 1.1) + xlab("z-score") +
+  ylab("Density")
+
+out = ewout1
+m2 <- data.frame(x = out$x) %>%
+  ggplot() +
+  geom_histogram(aes(x, ..density..), bins =20, colour = "black", 
+                 fill = "white") +
+  stat_function(geom = "line",  fun = plot_mix_comps,
+                args = list(out$mu[1], out$sigma[1], pi = out$lambda[1]),
+                colour = "red", lwd = 1.1) +
+  stat_function(geom = "line",  fun = plot_mix_comps,
+                args = list(out$mu[2], out$sigma[2], pi = out$lambda[2]),
+                colour = "blue", lwd = 1.1) + xlab("z-score") +
+  ylab("Density")
+
+ggarrange(m2,m1, ncol = 2, nrow = 1)
+dev.off()
+
+
 
 
 
